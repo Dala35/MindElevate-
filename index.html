@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#070b14">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>MindElevate - v3.2.0</title>
+    
+    <link rel="manifest" id="pwa-manifest">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --primary: #6366f1; --accent: #10b981; --bg-dark: #070b14; }
+        * { -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color: #f8fafc; overflow: hidden; margin: 0; height: 100vh; width: 100vw; }
+        
+        html, body { position: fixed; overflow: hidden; }
+
+        .glass-panel { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(20px); border: 1px solid rgba(99, 102, 241, 0.2); }
+        
+        .card-flip-inner { transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); transform-style: preserve-3d; width: 100%; height: 100%; }
+        .card-flip.flipped .card-flip-inner { transform: rotateY(180deg); }
+        .card-front, .card-back { backface-visibility: hidden; position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 0.75rem; display: flex; align-items: center; justify-content: center; }
+        .card-back { transform: rotateY(180deg); box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); }
+        
+        .sidebar { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; }
+        .sidebar.closed { transform: translateX(-100%); }
+        
+        #gameBoard { display: grid; width: 100%; max-width: 550px; margin: 0 auto; perspective: 1000px; }
+        .aspect-square-card { aspect-ratio: 1 / 1; width: 100%; }
+        
+        #gameOverlay.hidden-overlay { opacity: 0; pointer-events: none; visibility: hidden; transform: scale(1.05); }
+        
+        .luminous-form {
+            background: radial-gradient(circle at center, rgba(99, 102, 241, 0.8) 0%, rgba(99, 102, 241, 0.1) 70%);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            transform: scale(0.95);
+        }
+
+        .luminous-error {
+            background: radial-gradient(circle at center, rgba(244, 63, 94, 0.8) 0%, rgba(244, 63, 94, 0.1) 70%);
+            box-shadow: 0 0 20px rgba(244, 63, 94, 0.6);
+            border: 1px solid rgba(244, 63, 94, 0.4) !important;
+        }
+
+        .pad-active { opacity: 1 !important; transform: scale(1.08); box-shadow: 0 0 30px rgba(99, 102, 241, 1); filter: brightness(1.2); }
+        
+        .stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; }
+        .progress-bar { height: 3px; background: rgba(99, 102, 241, 0.2); width: 100%; position: absolute; bottom: 0; left: 0; z-index: 50; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s ease; }
+        
+        .badge-tag { font-size: 9px; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(99, 102, 241, 0.3); background: rgba(99, 102, 241, 0.1); color: #818cf8; text-transform: uppercase; display: inline-block; margin-top: 8px; }
+        .level-pill { font-size: 10px; padding: 2px 10px; border-radius: 20px; background: #6366f1; color: white; font-weight: bold; }
+        
+        button, select { min-height: 44px; outline: none; }
+        
+        @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="progress-bar"><div id="sessionProgress" class="progress-fill"></div></div>
+
+    <div id="sidebar" class="sidebar fixed inset-y-0 left-0 w-80 glass-panel p-6 closed shadow-2xl overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="text-xl font-bold text-white tracking-tighter">PROTOCOLO</h2>
+                <div class="flex items-center gap-2 mt-1">
+                    <p class="text-[10px] text-indigo-400 font-mono">v3.2.0 | ACTIVE</p>
+                    <span id="levelDisplay" class="level-pill">LVL 1</span>
+                </div>
+            </div>
+            <button onclick="toggleMenu()" class="text-slate-400 p-2 text-3xl" aria-label="Fechar menu">&times;</button>
+        </div>
+        
+        <nav class="space-y-5">
+            <section>
+                <label class="stat-label mb-2 block">Módulo Operacional</label>
+                <select id="gameType" onchange="handleGameTypeChange()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-200">
+                    <option value="match">Sincronia de Pares</option>
+                    <option value="sequence">Retenção Sequencial</option>
+                    <option value="pattern">Mapeamento Espacial</option>
+                </select>
+            </section>
+
+            <section>
+                <label class="stat-label mb-2 block">Dificuldade</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="setDifficulty('easy')" id="btn-easy" class="diff-btn py-2 text-xs rounded-lg border border-slate-700 bg-slate-900">Base</button>
+                    <button onclick="setDifficulty('medium')" id="btn-medium" class="diff-btn py-2 text-xs rounded-lg border border-indigo-500 bg-indigo-600 text-white">Alpha</button>
+                    <button onclick="setDifficulty('hard')" id="btn-hard" class="diff-btn py-2 text-xs rounded-lg border border-slate-700 bg-slate-900">Omega</button>
+                </div>
+            </section>
+
+            <section class="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="stat-label">Melhor Score:</span>
+                    <span id="highScore" class="text-sm font-bold font-mono">0000</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="stat-label">Streak Ativa:</span>
+                    <span id="streakDisplay" class="text-sm font-bold font-mono text-emerald-400">0 Dias</span>
+                </div>
+                <div id="recentHistory" class="pt-2 border-t border-white/5">
+                    <span class="stat-label block mb-2">Histórico Recente:</span>
+                    <div id="historyList" class="space-y-1 text-[9px] font-mono text-slate-500"></div>
+                </div>
+            </section>
+
+            <section class="pt-2 space-y-2">
+                <button onclick="showAbout()" class="w-full py-3 text-xs text-indigo-400 font-semibold border border-indigo-400/20 rounded-xl">DOCUMENTAÇÃO & ORIENTAÇÃO</button>
+                <button onclick="resetGame()" class="w-full bg-white text-black font-bold py-4 rounded-xl active:scale-95">REINICIAR INTERFACE</button>
+            </section>
+        </nav>
+    </div>
+
+    <div id="onboarding" class="fixed inset-0 bg-black/95 z-[200] hidden flex items-center justify-center p-6 backdrop-blur-md">
+        <div class="max-w-xs text-center">
+            <div id="obIcon" class="text-5xl mb-6">🎯</div>
+            <h3 id="obTitle" class="text-2xl font-bold mb-3">Sincronia</h3>
+            <p id="obText" class="text-slate-400 text-sm mb-8 leading-relaxed">...</p>
+            <div class="flex gap-2">
+                <button onclick="closeOnboarding(true)" class="flex-1 py-4 bg-slate-800 rounded-xl text-[10px] font-bold">PULAR</button>
+                <button onclick="nextOnboarding()" id="obNextBtn" class="flex-grow px-8 py-4 bg-indigo-600 rounded-xl text-[10px] font-bold">AVANÇAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="aboutScreen" class="fixed inset-0 bg-black/98 z-[150] hidden flex items-center justify-center p-6">
+        <div class="max-w-md w-full glass-panel p-8 rounded-3xl overflow-y-auto max-h-[85vh]">
+            <h2 class="text-2xl font-bold mb-4 text-indigo-400">GUIA DO PROTOCOLO</h2>
+            <div class="space-y-5 text-[11px] text-slate-300 leading-relaxed">
+                <section>
+                    <h3 class="text-white font-bold mb-1 uppercase tracking-wider">Treino de Sincronia</h3>
+                    <p>Foca-se na memória de trabalho e reconhecimento de padrões visuais. A paridade constante de estímulos fortalece a retenção de curto prazo.</p>
+                </section>
+                <section>
+                    <h3 class="text-white font-bold mb-1 uppercase tracking-wider">Retenção Sequencial</h3>
+                    <p>Estimula o córtex pré-frontal através da memorização de cadeias de eventos. O aumento progressivo da sequência desafia a capacidade de processamento serial.</p>
+                </section>
+                <section>
+                    <h3 class="text-white font-bold mb-1 uppercase tracking-wider">Mapeamento Espacial</h3>
+                    <p>Exercita a memória visual-espacial, crucial para a orientação e resolução de problemas complexos. Exige um foco intenso na "fotografia" do estado inicial do tabuleiro.</p>
+                </section>
+                <section class="pt-4 border-t border-white/10">
+                    <h3 class="text-rose-400 font-bold mb-1 uppercase tracking-wider text-[10px]">⚠️ Aviso Importante</h3>
+                    <p class="text-slate-400">Esta aplicação é um simulador de treino cognitivo e não constitui uma ferramenta de validação médica ou diagnóstico. Se apresentar sintomas persistentes de perda de memória ou confusão cognitiva, aconselhamos vivamente que procure a orientação de um profissional de saúde qualificado.</p>
+                </section>
+                <div class="pt-4 border-t border-white/10 text-[10px] text-slate-500 italic">
+                    <p>O sistema de Nível e Streak reflete a plasticidade neural adquirida através da repetição e consistência. O armazenamento é local, garantindo total privacidade dos seus dados de performance.</p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('aboutScreen').classList.add('hidden')" class="w-full mt-8 py-4 bg-white text-black font-bold rounded-xl">FECHAR GUIA</button>
+        </div>
+    </div>
+
+    <div class="h-screen flex flex-col">
+        <header class="h-20 flex justify-between items-center px-6 sm:px-8 border-b border-white/5 shrink-0 bg-[#070b14]">
+            <button onclick="toggleMenu()" class="p-3 hover:bg-indigo-500/10 rounded-xl" aria-label="Menu">
+                <div class="w-6 h-0.5 bg-white mb-1.5"></div><div class="w-4 h-0.5 bg-indigo-400 mb-1.5"></div><div class="w-5 h-0.5 bg-white"></div>
+            </button>
+            <div class="text-center">
+                <h1 class="text-lg font-bold tracking-[0.2em]">MINDELEVATE</h1>
+                <div id="gameStatus" class="text-[9px] text-indigo-400 font-mono mt-1 opacity-70 uppercase">Frequência Cognitiva</div>
+            </div>
+            <div class="flex gap-4 items-center font-mono">
+                <div class="text-right">
+                    <p class="stat-label mb-1">Score</p>
+                    <p id="score" class="text-xl font-bold">0000</p>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow flex items-center justify-center p-4 relative">
+            <div id="gameBoard" class="transition-all duration-700"></div>
+            
+            <div id="gameOverlay" class="absolute inset-0 flex items-center justify-center bg-[#070b14]/98 backdrop-blur-2xl z-40 transition-all duration-500">
+                <div class="text-center p-8 max-w-sm w-full">
+                    <div id="overlayIcon" class="mb-6 inline-block p-6 rounded-full bg-indigo-500/10 text-5xl">🧠</div>
+                    <h2 id="overlayTitle" class="text-3xl font-bold mb-2 uppercase text-white">MindElevate</h2>
+                    <p id="overlayText" class="text-slate-400 mb-6 text-sm">Protocolo de Treino Cognitivo Personalizado</p>
+                    <div id="endBadgeContainer" class="mb-8"></div>
+                    <button id="startBtn" onclick="startGame()" class="w-full py-5 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl active:scale-95">INICIAR SESSÃO</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const state = {
+            score: 0, highScore: 0, difficulty: 'medium', gameType: 'sequence',
+            isActive: false, flipped: [], matches: 0, sequence: [], playerSequence: [],
+            isAnimating: false, patternCorrect: 0, patternToFind: [], timer: 0,
+            timerInterval: null, audioCtx: null, sessions: 0, totalTime: 0
+        };
+
+        const config = {
+            easy: { size: 3, matchGrid: 4, label: "BASE", seqGrid: 2 },
+            medium: { size: 4, matchGrid: 16, label: "ALPHA", seqGrid: 3 },
+            hard: { size: 6, matchGrid: 36, label: "OMEGA", seqGrid: 4 }
+        };
+
+        const icons = ['✨', '💎', '🔥', '🌀', '🌿', '⚡', '🌙', '☀️', '⚛️', '🧬', '🔭', '🪐', '🧠', '🛡️', '⚔️', '🗝️', '🔱', '🍀', '💠', '🌠'];
+        const frequencies = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00];
+
+        const meta = {
+            getLevel: (sess) => Math.floor(sess / 5) + 1,
+            getProgressionMsg: (sess) => {
+                const msgs = ["Frequência inicial estabelecida.", "Aprimorando foco sináptico.", "Consistência detectada.", "Evolução cognitiva em curso.", "Padrão de excelência atingido.", "Maestria de mapeamento próximo."];
+                return msgs[Math.min(Math.floor(sess / 3), msgs.length - 1)];
+            },
+            updateStreak: (hist) => {
+                if (!hist || hist.length === 0) return 0;
+                const today = new Date().toLocaleDateString('pt-PT');
+                let count = 0;
+                const uniqueDates = [...new Set(hist.map(i => i.date))];
+                for (let i = 0; i < uniqueDates.length; i++) {
+                    count++;
+                }
+                return count;
+            }
+        };
+
+        function loadAnalytics() {
+            try {
+                const raw = localStorage.getItem('mind_v3_analyt');
+                const s = raw ? JSON.parse(raw) : { high:0, sess:0, time:0, hist:[] };
+                state.highScore = s.high || 0;
+                state.sessions = s.sess || 0;
+                state.totalTime = s.time || 0;
+                renderHistory(s.hist || []);
+                updateStatsUI(s.hist || []);
+            } catch(e) { console.error("Falha ao carregar analíticos"); }
+        }
+
+        function saveSession(res) {
+            try {
+                const raw = localStorage.getItem('mind_v3_analyt');
+                let s = raw ? JSON.parse(raw) : { high:0, sess:0, time:0, hist:[] };
+                
+                s.sess = (s.sess || 0) + 1;
+                s.time = (s.time || 0) + res.timer;
+                if(res.score > s.high) s.high = res.score;
+                
+                if(!s.hist) s.hist = [];
+                s.hist.unshift({ date: new Date().toLocaleDateString('pt-PT'), score: res.score, mode: res.mode, difficulty: state.difficulty });
+                if(s.hist.length > 15) s.hist.pop();
+
+                localStorage.setItem('mind_v3_analyt', JSON.stringify(s));
+                loadAnalytics();
+            } catch(e) { console.warn("Quota LocalStorage excedida."); }
+        }
+
+        function updateStatsUI(hist) {
+            const hsElement = document.getElementById('highScore');
+            const streakElement = document.getElementById('streakDisplay');
+            const levelElement = document.getElementById('levelDisplay');
+            
+            if(hsElement) hsElement.innerText = state.highScore.toString().padStart(4, '0');
+            if(levelElement) levelElement.innerText = `LVL ${meta.getLevel(state.sessions)}`;
+            if(streakElement) streakElement.innerText = `${meta.updateStreak(hist)} Dias`;
+        }
+
+        function renderHistory(hist) {
+            const list = document.getElementById('historyList');
+            if(list) list.innerHTML = hist.slice(0, 5).map(i => `<div>${i.date} | ${i.mode.toUpperCase()} | SC: ${i.score}</div>`).join('');
+        }
+
+        function initAudio() {
+            if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (state.audioCtx.state === 'suspended') state.audioCtx.resume();
+        }
+
+        function playTone(freq, duration) {
+            if (!state.audioCtx) return;
+            try {
+                const osc = state.audioCtx.createOscillator();
+                const gain = state.audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, state.audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.05, state.audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, state.audioCtx.currentTime + duration / 1000);
+                osc.connect(gain); gain.connect(state.audioCtx.destination);
+                osc.start(); osc.stop(state.audioCtx.currentTime + duration / 1000);
+            } catch(e) {}
+        }
+
+        function startTimer() {
+            state.timer = 0;
+            clearInterval(state.timerInterval);
+            state.timerInterval = setInterval(() => { if(state.isActive) state.timer += 0.1; }, 100);
+        }
+
+        function toggleMenu() { document.getElementById('sidebar').classList.toggle('closed'); }
+        function handleGameTypeChange() { state.gameType = document.getElementById('gameType').value; resetGame(); }
+        function setDifficulty(diff) { 
+            state.difficulty = diff; 
+            document.querySelectorAll('.diff-btn').forEach(b => b.className = "diff-btn py-2 text-xs rounded-lg border border-slate-700 bg-slate-900");
+            document.getElementById(`btn-${diff}`).className = "diff-btn py-2 text-xs rounded-lg border border-indigo-500 bg-indigo-600 text-white";
+            resetGame();
+        }
+        function updateScore(p = 0) { state.score += p; document.getElementById('score').innerText = state.score.toString().padStart(4, '0'); }
+        function showAbout() { document.getElementById('aboutScreen').classList.remove('hidden'); }
+
+        function resetGame() {
+            state.isActive = false; state.score = 0; state.matches = 0; state.flipped = [];
+            state.sequence = []; state.playerSequence = []; state.isAnimating = false;
+            clearInterval(state.timerInterval); updateScore();
+            document.getElementById('sessionProgress').style.width = '0%';
+            document.getElementById('gameOverlay').classList.remove('hidden-overlay');
+            document.getElementById('gameBoard').innerHTML = '';
+            document.getElementById('endBadgeContainer').innerHTML = '';
+        }
+
+        function startGame() {
+            initAudio();
+            state.isActive = true;
+            document.getElementById('gameOverlay').classList.add('hidden-overlay');
+            startTimer();
+            if (state.gameType === 'match') initMatchGame();
+            else if (state.gameType === 'sequence') initSequenceGame();
+            else if (state.gameType === 'pattern') initPatternGame();
+        }
+
+        function initMatchGame() {
+            const conf = config[state.difficulty];
+            const board = document.getElementById('gameBoard');
+            const cols = state.difficulty === 'easy' ? 2 : (state.difficulty === 'medium' ? 4 : 6);
+            board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            board.style.gap = '0.5rem';
+            let gIcons = [...icons.slice(0, conf.matchGrid / 2), ...icons.slice(0, conf.matchGrid / 2)].sort(() => Math.random() - 0.5);
+            gIcons.forEach((icon) => {
+                const card = document.createElement('div');
+                card.className = 'card-flip aspect-square-card relative cursor-pointer';
+                card.innerHTML = `<div class="card-flip-inner"><div class="card-front bg-slate-900 border border-slate-800 text-indigo-400">?</div><div class="card-back bg-indigo-600 text-white">${icon}</div></div>`;
+                card.onclick = () => {
+                    if (!state.isActive || state.isAnimating || card.classList.contains('flipped') || state.flipped.length >= 2) return;
+                    card.classList.add('flipped'); playTone(440, 80);
+                    state.flipped.push({ card, icon });
+                    if (state.flipped.length === 2) {
+                        state.isAnimating = true;
+                        const [f, s] = state.flipped;
+                        if (f.icon === s.icon) {
+                            updateScore(50); state.matches++; playTone(880, 200); state.flipped = []; state.isAnimating = false;
+                            document.getElementById('sessionProgress').style.width = (state.matches / (conf.matchGrid/2) * 100) + '%';
+                            if (state.matches === conf.matchGrid / 2) setTimeout(() => showEnd("SUCESSO", "Paridade neuronal estável."), 600);
+                        } else {
+                            setTimeout(() => {
+                                f.card.classList.remove('flipped'); s.card.classList.remove('flipped');
+                                playTone(150, 150); state.flipped = []; state.isAnimating = false;
+                            }, 800);
+                        }
+                    }
+                };
+                board.appendChild(card);
+            });
+        }
+
+        function initSequenceGame() {
+            const conf = config[state.difficulty]; const size = conf.seqGrid;
+            const board = document.getElementById('gameBoard');
+            board.style.gridTemplateColumns = `repeat(${size}, 1fr)`; board.style.gap = '0.5rem';
+            for (let i = 0; i < size*size; i++) {
+                const pad = document.createElement('div');
+                pad.className = `bg-indigo-500 aspect-square rounded-2xl opacity-20 cursor-pointer border border-white/5`;
+                pad.id = `pad-${i}`;
+                pad.onclick = () => {
+                    if (state.isAnimating || !state.isActive) return;
+                    flashPad(i, 200); state.playerSequence.push(i);
+                    const step = state.playerSequence.length - 1;
+                    if (state.playerSequence[step] !== state.sequence[step]) {
+                        playTone(100, 500); showEnd("FALHA", `Sequência interrompida no nível ${state.sequence.length}.`);
+                        return;
+                    }
+                    if (state.playerSequence.length === state.sequence.length) {
+                        updateScore(100); document.getElementById('sessionProgress').style.width = (state.sequence.length * 10) % 100 + '%';
+                        setTimeout(nextSequenceStep, 800);
+                    }
+                };
+                board.appendChild(pad);
+            }
+            state.sequence = []; setTimeout(nextSequenceStep, 1000);
+        }
+
+        async function nextSequenceStep() {
+            if (!state.isActive) return;
+            state.isAnimating = true; state.playerSequence = [];
+            const total = config[state.difficulty].seqGrid**2;
+            state.sequence.push(Math.floor(Math.random() * total));
+            for (const id of state.sequence) {
+                if (!state.isActive) break;
+                await flashPad(id, 400); await new Promise(r => setTimeout(r, 200));
+            }
+            state.isAnimating = false;
+        }
+
+        function flashPad(id, dur) {
+            return new Promise(resolve => {
+                const pad = document.getElementById(`pad-${id}`);
+                if(!pad) return resolve();
+                pad.classList.add('pad-active'); playTone(frequencies[id % frequencies.length], dur);
+                setTimeout(() => { if(pad) pad.classList.remove('pad-active'); resolve(); }, dur);
+            });
+        }
+
+        function initPatternGame() {
+            const size = state.difficulty === 'easy' ? 3 : (state.difficulty === 'medium' ? 4 : 6);
+            const board = document.getElementById('gameBoard'); 
+            board.innerHTML = '';
+            board.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+            board.style.gap = '0.5rem';
+            const total = size * size; 
+            const count = Math.floor(total / 3) + 1;
+            state.patternToFind = []; state.patternCorrect = 0; state.isAnimating = true;
+            while(state.patternToFind.length < count) {
+                let r = Math.floor(Math.random() * total);
+                if(!state.patternToFind.includes(r)) state.patternToFind.push(r);
+            }
+            for(let i=0; i < total; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'bg-slate-900 aspect-square rounded-xl cursor-pointer border border-white/5 transition-all duration-300 flex items-center justify-center';
+                cell.onclick = (function(index) {
+                    return function() {
+                        if (state.isAnimating || !state.isActive || cell.classList.contains('luminous-form') || cell.classList.contains('luminous-error')) return;
+                        if(state.patternToFind.includes(index)) {
+                            cell.classList.add('luminous-form'); playTone(800, 100); state.patternCorrect++; updateScore(30);
+                            document.getElementById('sessionProgress').style.width = (state.patternCorrect / state.patternToFind.length * 100) + '%';
+                            if(state.patternCorrect === state.patternToFind.length) {
+                                state.isAnimating = true;
+                                setTimeout(() => showEnd("MAPA OK", "Coordenadas verificadas."), 500);
+                            }
+                        } else {
+                            cell.classList.add('luminous-error'); playTone(200, 300); state.isAnimating = true;
+                            setTimeout(() => showEnd("DESVIO", "Erro de mapeamento espacial."), 600);
+                        }
+                    };
+                })(i);
+                board.appendChild(cell);
+            }
+            setTimeout(() => {
+                if(!state.isActive) return;
+                state.patternToFind.forEach(id => { if(board.children[id]) board.children[id].classList.add('luminous-form'); });
+                playTone(600, 300);
+                const memoTime = state.difficulty === 'hard' ? 1200 : 1800;
+                setTimeout(() => {
+                    if(!state.isActive) return;
+                    state.patternToFind.forEach(id => { if(board.children[id]) board.children[id].classList.remove('luminous-form'); });
+                    state.isAnimating = false;
+                }, memoTime);
+            }, 800);
+        }
+
+        function showEnd(title, msg) {
+            state.isActive = false; state.isAnimating = false;
+            clearInterval(state.timerInterval);
+            
+            saveSession({ score: state.score, timer: state.timer, mode: state.gameType });
+            
+            const badgeContainer = document.getElementById('endBadgeContainer');
+            let badge = "";
+            if (state.score > 500) badge = "Neural Apex";
+            else if (state.timer < 10) badge = "Quick Flash";
+            else if (state.sessions % 5 === 0) badge = "Vínculo Estável";
+            
+            const progMsg = meta.getProgressionMsg(state.sessions);
+            
+            document.getElementById('overlayIcon').innerText = "✨";
+            document.getElementById('overlayTitle').innerText = title;
+            document.getElementById('overlayText').innerHTML = `
+                <span class="text-xs text-indigo-300 opacity-60 italic mb-2 block">${progMsg}</span>
+                ${msg}<br>
+                <span class="text-white font-bold text-xl font-mono mt-2 block">SC: ${state.score}</span>
+            `;
+            
+            if (badge) {
+                badgeContainer.innerHTML = `<span class="badge-tag">Badge: ${badge}</span>`;
+            }
+            
+            document.getElementById('gameOverlay').classList.remove('hidden-overlay');
+            document.getElementById('startBtn').innerText = "REINICIAR";
+        }
+
+        let obStep = 0;
+        const obData = [
+            { icon: "🎯", title: "Objetivo", text: "Treine a sua percepção e memória visual através de exercícios de alta frequência." },
+            { icon: "⚡", title: "Plasticidade", text: "A consistência é a chave. Exercícios diários promovem conexões neurais mais fortes." },
+            { icon: "🛡️", title: "Privacidade", text: "Os seus dados de performance são armazenados localmente e nunca saem do seu dispositivo." }
+        ];
+
+        function checkOnboarding() {
+            if(!localStorage.getItem('mind_onboarded_v320')) {
+                document.getElementById('onboarding').classList.remove('hidden');
+                updateOnboarding();
+            }
+        }
+
+        function nextOnboarding() {
+            obStep++;
+            if(obStep >= obData.length) closeOnboarding(true);
+            else updateOnboarding();
+        }
+
+        function updateOnboarding() {
+            const d = obData[obStep];
+            document.getElementById('obIcon').innerText = d.icon;
+            document.getElementById('obTitle').innerText = d.title;
+            document.getElementById('obText').innerText = d.text;
+            document.getElementById('obNextBtn').innerText = (obStep === obData.length -1) ? "FINALIZAR" : "AVANÇAR";
+        }
+
+        function closeOnboarding(save) {
+            if(save) localStorage.setItem('mind_onboarded_v320', 'true');
+            document.getElementById('onboarding').classList.add('hidden');
+        }
+
+        window.addEventListener('load', () => {
+            loadAnalytics();
+            checkOnboarding();
+            const manifest = { name: "MindElevate", short_name: "MindElevate", start_url: ".", display: "standalone", background_color: "#070b14", theme_color: "#070b14" };
+            const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            document.getElementById('pwa-manifest').setAttribute('href', url);
+        });
+    </script>
+</body>
+</html>
+
