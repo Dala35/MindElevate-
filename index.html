@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#070b14">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>MindElevate - v3.2.0</title>
+    <title>MindElevate - v3.3.0</title>
     
     <link rel="manifest" id="pwa-manifest">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -25,6 +25,38 @@
         .card-flip.flipped .card-flip-inner { transform: rotateY(180deg); }
         .card-front, .card-back { backface-visibility: hidden; position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 0.75rem; display: flex; align-items: center; justify-content: center; }
         .card-back { transform: rotateY(180deg); box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); }
+        
+        /* Nova classe para pares encontrados - Efeito "Link Ativo" */
+        .card-matched .card-back {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+            border: 1px solid rgba(255,255,255,0.4);
+            animation: pulseMatch 2s infinite ease-in-out;
+        }
+
+        @keyframes pulseMatch {
+            0% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+            50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.8); }
+            100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+        }
+
+        /* Texto flutuante para pontos */
+        .float-score {
+            position: absolute;
+            color: #fff;
+            font-weight: bold;
+            font-size: 1.2rem;
+            pointer-events: none;
+            z-index: 50;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            animation: floatUp 0.8s ease-out forwards;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 0; transform: translateY(0) scale(0.5); }
+            20% { opacity: 1; transform: translateY(-10px) scale(1.2); }
+            100% { opacity: 0; transform: translateY(-40px) scale(1); }
+        }
         
         .sidebar { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; }
         .sidebar.closed { transform: translateX(-100%); }
@@ -70,7 +102,7 @@
             <div>
                 <h2 class="text-xl font-bold text-white tracking-tighter">PROTOCOLO</h2>
                 <div class="flex items-center gap-2 mt-1">
-                    <p class="text-[10px] text-indigo-400 font-mono">v3.2.0 | ACTIVE</p>
+                    <p class="text-[10px] text-indigo-400 font-mono">v3.3.0 | ACTIVE</p>
                     <span id="levelDisplay" class="level-pill">LVL 1</span>
                 </div>
             </div>
@@ -135,8 +167,8 @@
             <h2 class="text-2xl font-bold mb-4 text-indigo-400">GUIA DO PROTOCOLO</h2>
             <div class="space-y-5 text-[11px] text-slate-300 leading-relaxed">
                 <section>
-                    <h3 class="text-white font-bold mb-1 uppercase tracking-wider">Treino de Sincronia</h3>
-                    <p>Foca-se na memória de trabalho e reconhecimento de padrões visuais. A paridade constante de estímulos fortalece a retenção de curto prazo.</p>
+                    <h3 class="text-white font-bold mb-1 uppercase tracking-wider">Treino de Sincronia (Atualizado)</h3>
+                    <p>Foca-se na memória de trabalho com dinâmica acelerada. <span class="text-emerald-400">Mecânica de Combo:</span> Encontre pares sucessivos rapidamente (menos de 3s) para multiplicar a sua pontuação e ativar a ressonância neural.</p>
                 </section>
                 <section>
                     <h3 class="text-white font-bold mb-1 uppercase tracking-wider">Retenção Sequencial</h3>
@@ -154,12 +186,10 @@
                     <p>O sistema de Nível e Streak reflete a plasticidade neural adquirida através da repetição e consistência. O armazenamento é local, garantindo total privacidade dos seus dados de performance.</p>
                 </div>
 
-                <!-- ADDED SUPPORT EMAIL SECTION -->
                 <div class="pt-4 border-t border-white/10 flex flex-col items-center justify-center">
                     <p class="stat-label mb-2 opacity-70">SUPORTE TÉCNICO</p>
                     <a href="mailto:dala.cure.os@gmail.com" class="text-xs font-mono text-indigo-400 hover:text-white transition-colors border-b border-indigo-400/30 pb-0.5">dala.cure.os@gmail.com</a>
                 </div>
-                <!-- END ADDED SUPPORT EMAIL SECTION -->
 
             </div>
             <button onclick="document.getElementById('aboutScreen').classList.add('hidden')" class="w-full mt-8 py-4 bg-white text-black font-bold rounded-xl">FECHAR GUIA</button>
@@ -203,7 +233,9 @@
             score: 0, highScore: 0, difficulty: 'medium', gameType: 'sequence',
             isActive: false, flipped: [], matches: 0, sequence: [], playerSequence: [],
             isAnimating: false, patternCorrect: 0, patternToFind: [], timer: 0,
-            timerInterval: null, audioCtx: null, sessions: 0, totalTime: 0
+            timerInterval: null, audioCtx: null, sessions: 0, totalTime: 0,
+            // New dynamic variables
+            comboMultiplier: 1, lastMatchTime: 0
         };
 
         const config = {
@@ -317,6 +349,9 @@
         function resetGame() {
             state.isActive = false; state.score = 0; state.matches = 0; state.flipped = [];
             state.sequence = []; state.playerSequence = []; state.isAnimating = false;
+            // Reset dynamic vars
+            state.comboMultiplier = 1; state.lastMatchTime = 0;
+            
             clearInterval(state.timerInterval); updateScore();
             document.getElementById('sessionProgress').style.width = '0%';
             document.getElementById('gameOverlay').classList.remove('hidden-overlay');
@@ -334,6 +369,18 @@
             else if (state.gameType === 'pattern') initPatternGame();
         }
 
+        // Helper para mostrar texto flutuante
+        function showFloatingText(element, text) {
+            const rect = element.getBoundingClientRect();
+            const floater = document.createElement('div');
+            floater.className = 'float-score';
+            floater.innerText = text;
+            floater.style.left = (rect.left + rect.width / 2 - 20) + 'px';
+            floater.style.top = (rect.top) + 'px';
+            document.body.appendChild(floater);
+            setTimeout(() => floater.remove(), 900);
+        }
+
         function initMatchGame() {
             const conf = config[state.difficulty];
             const board = document.getElementById('gameBoard');
@@ -341,22 +388,62 @@
             board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
             board.style.gap = '0.5rem';
             let gIcons = [...icons.slice(0, conf.matchGrid / 2), ...icons.slice(0, conf.matchGrid / 2)].sort(() => Math.random() - 0.5);
+            
+            state.lastMatchTime = Date.now(); // Init timer
+
             gIcons.forEach((icon) => {
                 const card = document.createElement('div');
                 card.className = 'card-flip aspect-square-card relative cursor-pointer';
                 card.innerHTML = `<div class="card-flip-inner"><div class="card-front bg-slate-900 border border-slate-800 text-indigo-400">?</div><div class="card-back bg-indigo-600 text-white">${icon}</div></div>`;
                 card.onclick = () => {
-                    if (!state.isActive || state.isAnimating || card.classList.contains('flipped') || state.flipped.length >= 2) return;
+                    if (!state.isActive || state.isAnimating || card.classList.contains('flipped') || card.classList.contains('card-matched') || state.flipped.length >= 2) return;
+                    
                     card.classList.add('flipped'); playTone(440, 80);
                     state.flipped.push({ card, icon });
+                    
                     if (state.flipped.length === 2) {
                         state.isAnimating = true;
                         const [f, s] = state.flipped;
+                        
                         if (f.icon === s.icon) {
-                            updateScore(50); state.matches++; playTone(880, 200); state.flipped = []; state.isAnimating = false;
+                            // Logic for Combo & Dynamic Rules
+                            const now = Date.now();
+                            const timeDiff = now - state.lastMatchTime;
+                            
+                            // Se encontrar o par em menos de 3.5 segundos, aumenta multiplicador
+                            if (timeDiff < 3500 && state.matches > 0) {
+                                state.comboMultiplier = Math.min(state.comboMultiplier + 1, 5); // Max x5
+                            } else {
+                                state.comboMultiplier = 1;
+                            }
+                            state.lastMatchTime = now;
+
+                            const basePoints = 50;
+                            const totalPoints = basePoints * state.comboMultiplier;
+
+                            // Visual Feedback
+                            setTimeout(() => {
+                                f.card.classList.add('card-matched');
+                                s.card.classList.add('card-matched');
+                                
+                                let comboText = `+${totalPoints}`;
+                                if(state.comboMultiplier > 1) comboText += ` x${state.comboMultiplier} 🔥`;
+                                showFloatingText(s.card, comboText);
+                            }, 200);
+
+                            updateScore(totalPoints); 
+                            state.matches++; 
+                            playTone(880 + (state.comboMultiplier * 100), 200); // Som fica mais agudo com combo
+                            state.flipped = []; 
+                            state.isAnimating = false;
+                            
                             document.getElementById('sessionProgress').style.width = (state.matches / (conf.matchGrid/2) * 100) + '%';
-                            if (state.matches === conf.matchGrid / 2) setTimeout(() => showEnd("SUCESSO", "Paridade neuronal estável."), 600);
+                            
+                            if (state.matches === conf.matchGrid / 2) setTimeout(() => showEnd("SUCESSO", "Sincronia total estabelecida."), 600);
                         } else {
+                            // Penalidade: Reset Combo
+                            state.comboMultiplier = 1;
+                            
                             setTimeout(() => {
                                 f.card.classList.remove('flipped'); s.card.classList.remove('flipped');
                                 playTone(150, 150); state.flipped = []; state.isAnimating = false;
